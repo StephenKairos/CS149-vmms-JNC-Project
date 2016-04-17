@@ -10,5 +10,4 @@ cl test2.cpp vmms.lib
 rem
 rem -- Use dumpbin command/tool to examine exe or dll headers.
 rem dumpbin /headers vmms.dll
-test1
 mmc 8

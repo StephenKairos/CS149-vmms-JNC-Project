@@ -24,34 +24,68 @@ vmms.cpp - This file contains the code for each of the memory functions as well 
 int byte_boundary = DEFAULT_BOUNDARY;
 int mem_size = MAX_PHY_SIZE;            // size of simulated phy mem (in bytes)
 char mem_start [MAX_PHY_SIZE] = {0};  	// simulated Phy Memory
-#pragma data_seg ()
 
-// Map table Structures/Entries
-
-//Need to implement a constructor
+//My Stuff
 bool booted = false;
 
+// struct mEntry {
+//   int PID;
+//   char * addr;
+//   int rSize;
+//   int aSize;
+// } mTable[MAX_TABLE_SIZE];
+//
+// struct fEntry {
+//   char * addr;
+//   int size;
+// } fList[MAX_TABLE_SIZE];
+
+bool testFlag = false;
+bool test = false;
+#pragma data_seg ()
+#pragma comment(linker, "/SECTION:.SHARED,RWS")
+
+#pragma bss_seg(".STRUCT_SHARED")
 struct mEntry {
   int PID;
   char * addr;
   int rSize;
   int aSize;
-  mEntry() {
-    PID = NULL;
-    addr = mem_start;
-    rSize = -1;
-    aSize = -1;
-  }
 } mTable[MAX_TABLE_SIZE];
 
 struct fEntry {
   char * addr;
   int size;
-  fEntry() {
-    addr = mem_start;
-    size = -1;
-  }
 } fList[MAX_TABLE_SIZE];
+#pragma bss_seg ()
+#pragma comment(linker, "/SECTION:.STRUCT_SHARED,RWS")
+
+// Map table Structures/Entries
+
+//Need to implement a constructor
+// bool booted = false;
+//
+// struct mEntry {
+//   int PID;
+//   char * addr;
+//   int rSize;
+//   int aSize;
+//   mEntry() {
+//     PID = NULL;
+//     addr = mem_start;
+//     rSize = -1;
+//     aSize = -1;
+//   }
+// } mTable[MAX_TABLE_SIZE];
+//
+// struct fEntry {
+//   char * addr;
+//   int size;
+//   fEntry() {
+//     addr = mem_start;
+//     size = -1;
+//   }
+// } fList[MAX_TABLE_SIZE];
 
 time_t now;
 struct tm *tm;
@@ -76,7 +110,19 @@ __declspec(dllexport) int vmms_write_bin();
 //Helper Functions
 _declspec(dllexport) bool vmms_boot() {
   booted = true;
-  fList[0].addr = mem_start;
+
+  for (int i = 0; i < MAX_TABLE_SIZE; i++) {
+    mEntry m;
+    m.PID = NULL; m.addr = mem_start; m.rSize = -1; m.aSize = -1;
+    mTable[i] = m;
+  }
+
+  for (int i = 0; i < MAX_TABLE_SIZE; i++) {
+    fEntry f;
+    f.addr = mem_start; f.size = -1;
+    fList[i] = f;
+  }
+
   fList[0].size = MAX_PHY_SIZE;
 
   printf("Start of mem: %i\nEnd of mem: %i\n", &mem_start, &mem_start[MAX_PHY_SIZE]);
@@ -101,6 +147,15 @@ __declspec(dllexport) int vmms_write_bin() {
 __declspec(dllexport) int mmc_initialize (  int boundary_size ) {
   int rc = VMMS_SUCCESS;
   byte_boundary = boundary_size;
+  testFlag = true;
+  printf("%i\n", &testFlag);
+
+  if( testFlag) {
+    printf("SUCCESS\n");
+  } else {
+    printf("FAIL\n");
+  }
+
   return rc;
 }
 
@@ -109,18 +164,23 @@ __declspec(dllexport) int mmc_display_memtable ( char* filename ) {
 
   if(!booted) { vmms_boot(); }
 
+  FILE *fp;
+  if(filename != NULL) {
+    fp = fopen(filename, "w+");
+  }
+
   /* Put your source code here */
   int mPos = 0;
   printf("%i\n", mTable[mPos].rSize);
   while(mTable[mPos].rSize != -1) {
     mEntry m = mTable[mPos];
     printf("%i - PID: %i, Address: %i, Requested Size: %i, Actual Size: %i\n", mPos + 1, m.PID, m.addr, m.rSize, m.aSize);
+    if(filename != NULL) {
+
+    }
     mPos++;
   }
-
-  if(filename != NULL) {
-
-  }
+  fclose(fp);
 
   return rc;
 }
@@ -138,8 +198,17 @@ __declspec(dllexport) char* vmms_malloc (  int size, int* error_code ) {
   /* Put your source code here */
   *error_code = VMMS_SUCCESS;
 
+  printf("%i\n", &testFlag);
+  if(testFlag) {
+    printf("SUCCESS\n");
+  } else {
+    printf("FAIL\n");
+  }
+
   //Always boot
   if(!booted) { vmms_boot(); }
+
+  printf("%i\n", fList[0].size);
 
   //Set size in accordance with the byte_boundary
   int reqSize = size;
@@ -151,16 +220,25 @@ __declspec(dllexport) char* vmms_malloc (  int size, int* error_code ) {
   // Checking our free list for available spots
   printf("Checking free list...\n");
   int fPos = 0;
+  int currentPos = fPos;
   fEntry currentSlot = fList[fPos];
   while(fList[fPos + 1].size != -1) {
-    fPos++;
     if(fList[fPos].size == actualSize) {
       currentSlot = fList[fPos];
+      currentPos = fPos;
       break;
     } else if(fList[fPos].size > currentSlot.size) {
       currentSlot = fList[fPos];
+      printf("Current Slot Size: %i", currentSlot.size);
+      if(fList[fPos + 1].size == -1) {
+        currentPos = fPos;
+        break;
+      }
     }
+    fPos++;
   }
+
+  printf("FPOS: %i\n", fList[0].addr);
 
   //Setup position in mem table for insertion
   printf("Finding memory table slot...\n");
@@ -188,8 +266,9 @@ __declspec(dllexport) char* vmms_malloc (  int size, int* error_code ) {
   mTable[mPos] = insert;
 
   //Set new free slot, delete old
-  fList[fPos].size -= actualSize;
-  fList[fPos].addr += actualSize;
+  fList[0].size -= actualSize;
+  printf("NEW SIZE: %i\n", fList[0].size);
+  fList[0].addr += actualSize;
 
   //Insert file creation/append code here
   FILE *fp;
@@ -207,7 +286,7 @@ __declspec(dllexport) char* vmms_malloc (  int size, int* error_code ) {
   tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   //Program Name
-  CHAR nameBuffer[MAX_PATH];
+  char  nameBuffer[MAX_PATH];
   GetModuleBaseName(GetCurrentProcess(), NULL, nameBuffer, _MAX_FNAME);
 
   fprintf(fp, "%s ", nameBuffer);
@@ -294,7 +373,7 @@ __declspec(dllexport) int vmms_memset ( char* dest_ptr, char c, int size ) {
   tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   //Program Name
-  CHAR nameBuffer[MAX_PATH];
+  char  nameBuffer[MAX_PATH];
   GetModuleBaseName(GetCurrentProcess(), NULL, nameBuffer, _MAX_FNAME);
 
   fprintf(fp, "%s ", nameBuffer);
@@ -367,7 +446,7 @@ __declspec(dllexport) int vmms_memcpy ( char* dest_ptr, char* src_ptr, int size 
   tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   //Program Name
-  CHAR nameBuffer[MAX_PATH];
+  char  nameBuffer[MAX_PATH];
   GetModuleBaseName(GetCurrentProcess(), NULL, nameBuffer, _MAX_FNAME);
 
   fprintf(fp, "%s ", nameBuffer);
@@ -446,7 +525,7 @@ __declspec(dllexport) int vmms_print ( char* src_ptr, int size ) {
   tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   //Program Name
-  CHAR nameBuffer[MAX_PATH];
+  char  nameBuffer[MAX_PATH];
   GetModuleBaseName(GetCurrentProcess(), NULL, nameBuffer, _MAX_FNAME);
 
   fprintf(fp, "%s ", nameBuffer);
@@ -564,7 +643,7 @@ __declspec(dllexport) int vmms_free ( char* mem_ptr ) {
   tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   //Program Name
-  CHAR nameBuffer[MAX_PATH];
+  char  nameBuffer[MAX_PATH];
   GetModuleBaseName(GetCurrentProcess(), NULL, nameBuffer, _MAX_FNAME);
 
   fprintf(fp, "%s ", nameBuffer);
